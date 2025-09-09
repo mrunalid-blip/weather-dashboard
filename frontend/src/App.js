@@ -11,7 +11,7 @@ function App() {
 
   try {
     // Current weather
-    const res = await axios.get(`https://weather-dashboard-kgik.onrender.com/weather/${city}');
+    const res = await axios.get(`https://weather-dashboard-kgik.onrender.com/weather/${city}`);
     setWeather(res.data);
   } catch (err) {
     setWeather(null);
