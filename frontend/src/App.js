@@ -11,7 +11,7 @@ function App() {
 
   try {
     // Current weather
-    const res = await axios.get(`http://localhost:5000/weather/${city}`);
+    const res = await axios.get(`https://weather-dashboard-kgik.onrender.com/weather/${city}');
     setWeather(res.data);
   } catch (err) {
     setWeather(null);
@@ -21,7 +21,7 @@ function App() {
 
   try {
     // Forecast (only if weather worked)
-    const forecastRes = await axios.get(`http://localhost:5000/forecast/${city}`);
+    const forecastRes = await axios.get(`https://weather-dashboard-kgik.onrender.com/forecast/${city}`);
     const daily = forecastRes.data.list.filter((_, index) => index % 8 === 0);
     setForecast(daily);
   } catch (err) {
