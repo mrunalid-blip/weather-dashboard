@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 
-const API_BASE = process.env.REACT_APP_API_BASE || "https://weather-backend-latest-1-hxzy.onrender.com";
-
 function App() {
   const [city, setCity] = useState("");
   const [weather, setWeather] = useState(null);
@@ -15,7 +13,11 @@ function App() {
   );
   const [showSuggestions, setShowSuggestions] = useState(false);
 
-  // ✅ Save theme preference
+  const API_BASE =
+    process.env.REACT_APP_API_BASE ||
+    "https://weather-backend-latest-1-hxzy.onrender.com";
+
+  // ✅ Theme persistence
   useEffect(() => {
     const saved = localStorage.getItem("theme");
     if (saved) setTheme(saved);
@@ -33,48 +35,53 @@ function App() {
   }, [searchHistory]);
 
   // ✅ Fetch weather
-  const getWeather = useCallback(async (location) => {
-    setError(null);
-    setLoading(true);
+  const getWeather = useCallback(
+    async (location) => {
+      setError(null);
+      setLoading(true);
 
-    try {
-      let res;
-      const opts = { timeout: 15000 }; // timeout to catch backend cold starts
+      try {
+        let res;
+        if (typeof location === "string") {
+          res = await axios.get(
+            `${API_BASE}/weather/${encodeURIComponent(location)}`
+          );
+        } else if (location.lat && location.lon) {
+          res = await axios.get(
+            `${API_BASE}/weather?lat=${location.lat}&lon=${location.lon}`
+          );
+        }
 
-      if (typeof location === "string") {
-        res = await axios.get(`${API_BASE}/weather/${encodeURIComponent(location)}`, opts);
-      } else if (location.lat && location.lon) {
-        res = await axios.get(`${API_BASE}/weather?lat=${location.lat}&lon=${location.lon}`, opts);
+        setWeather(res.data);
+
+        const forecastRes = await axios.get(
+          typeof location === "string"
+            ? `${API_BASE}/forecast/${encodeURIComponent(location)}`
+            : `${API_BASE}/forecast?lat=${location.lat}&lon=${location.lon}`
+        );
+
+        const daily = (forecastRes.data?.list || []).filter(
+          (_, index) => index % 8 === 0
+        );
+        setForecast(daily);
+
+        if (typeof location === "string") {
+          setSearchHistory((prev) => {
+            const updated = [location, ...prev.filter((c) => c !== location)];
+            return updated.slice(0, 10);
+          });
+        }
+      } catch (err) {
+        console.error("Weather fetch error:", err.message);
+        setWeather(null);
+        setForecast([]);
+        setError("Could not fetch weather data.");
+      } finally {
+        setLoading(false);
       }
-
-      setWeather(res.data);
-
-      const forecastRes = await axios.get(
-        typeof location === "string"
-          ? `${API_BASE}/forecast/${encodeURIComponent(location)}`
-          : `${API_BASE}/forecast?lat=${location.lat}&lon=${location.lon}`,
-        opts
-      );
-
-      const daily = (forecastRes.data?.list || []).filter((_, index) => index % 8 === 0);
-      setForecast(daily);
-
-      // ✅ Add to history only if string
-      if (typeof location === "string") {
-        setSearchHistory((prev) => {
-          const updated = [location, ...prev.filter((c) => c !== location)];
-          return updated.slice(0, 10); // keep max 10
-        });
-      }
-    } catch (err) {
-      console.error("getWeather error:", err.response?.data || err.message);
-      setWeather(null);
-      setForecast([]);
-      setError(err.response?.data?.error || "Could not fetch weather data.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    },
+    [API_BASE]
+  );
 
   // ✅ Auto-detect location
   useEffect(() => {
@@ -90,18 +97,27 @@ function App() {
               if (res.data.city) {
                 setCity(res.data.city);
                 getWeather(res.data.city);
+              } else if (res.data.latitude && res.data.longitude) {
+                getWeather({
+                  lat: res.data.latitude,
+                  lon: res.data.longitude,
+                });
               } else {
-                getWeather({ lat: res.data.latitude, lon: res.data.longitude });
+                // ✅ fallback city if location fails
+                getWeather("London");
               }
             } catch {
               console.warn("IP detection failed");
+              getWeather("London");
             }
           }
         );
+      } else {
+        getWeather("London");
       }
     };
     fetchLocation();
-  }, [getWeather]);
+  }, [API_BASE, getWeather]);
 
   const handleSearch = () => {
     if (city.trim()) {

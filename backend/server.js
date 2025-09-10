@@ -4,12 +4,7 @@ const cors = require("cors");
 require("dotenv").config();
 
 const app = express();
-
-// Parse JSON bodies
-app.use(express.json());
-
-// Allow CORS (set FRONTEND_URL in Render if you want to restrict it)
-app.use(cors({ origin: process.env.FRONTEND_URL || "*" }));
+app.use(cors());
 
 // Root route
 app.get("/", (req, res) => {
@@ -25,8 +20,7 @@ app.get("/weather/:city", async (req, res) => {
     );
     res.json(response.data);
   } catch (err) {
-    console.error("Weather-by-city error:", err.response?.data || err.message);
-    res.status(err.response?.status || 500).json({ error: "City not found" });
+    res.status(500).json({ error: "City not found" });
   }
 });
 
@@ -42,8 +36,7 @@ app.get("/weather", async (req, res) => {
     );
     res.json(response.data);
   } catch (err) {
-    console.error("Weather-by-coords error:", err.response?.data || err.message);
-    res.status(err.response?.status || 500).json({ error: "Could not fetch weather by coordinates" });
+    res.status(500).json({ error: "Could not fetch weather by coordinates" });
   }
 });
 
@@ -56,8 +49,7 @@ app.get("/forecast/:city", async (req, res) => {
     );
     res.json(response.data);
   } catch (err) {
-    console.error("Forecast-by-city error:", err.response?.data || err.message);
-    res.status(err.response?.status || 404).json({ error: "City not found" });
+    res.status(404).json({ error: "City not found" });
   }
 });
 
@@ -73,15 +65,13 @@ app.get("/forecast", async (req, res) => {
     );
     res.json(response.data);
   } catch (err) {
-    console.error("Forecast-by-coords error:", err.response?.data || err.message);
-    res.status(err.response?.status || 500).json({ error: "Could not fetch forecast by coordinates" });
+    res.status(500).json({ error: "Could not fetch forecast by coordinates" });
   }
 });
 
 // ✅ Auto-detect location using ipdata.co + reverse geocoding
 app.get("/location", async (req, res) => {
   try {
-    // 1. Get IP-based location
     const ipRes = await axios.get(
       `https://api.ipdata.co?api-key=${process.env.IPDATA_API_KEY}`
     );
@@ -89,7 +79,7 @@ app.get("/location", async (req, res) => {
     const { city, region, country_name, latitude, longitude } = ipRes.data;
     let detectedCity = city;
 
-    // 2. If city is null, try reverse geocoding with OpenWeather (use HTTPS)
+    // ✅ HTTPS reverse geocoding
     if (!detectedCity && latitude && longitude) {
       const geoRes = await axios.get(
         `https://api.openweathermap.org/geo/1.0/reverse?lat=${latitude}&lon=${longitude}&limit=1&appid=${process.env.WEATHER_API_KEY}`
@@ -108,14 +98,11 @@ app.get("/location", async (req, res) => {
       longitude,
     });
   } catch (error) {
-    console.error("Location API error:", error.response?.data || error.message);
+    console.error("Location API error:", error.message);
     res.status(500).json({ error: "Could not fetch location" });
   }
 });
 
-// Health check endpoint
-app.get("/health", (req, res) => res.json({ status: "ok" }));
-
-// ✅ Use correct port for Render
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`✅ Backend running on port ${PORT}`));
+app.listen(5000, () =>
+  console.log("✅ Backend running on http://localhost:5000")
+);
