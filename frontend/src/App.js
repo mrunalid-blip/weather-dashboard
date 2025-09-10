@@ -13,10 +13,11 @@ function App() {
     JSON.parse(localStorage.getItem("searchHistory")) || []
   );
   const [showSuggestions, setShowSuggestions] = useState(false);
+  
+const API_BASE =
+  process.env.REACT_APP_API_BASE_URL ||
+  "https://weather-backend-latest-1-hxzy.onrender.com";
 
-  const API_BASE =
-    process.env.REACT_APP_API_BASE_URL ||
-    "http://localhost:5000"; // 🔥 replace with your backend URL on Render
 
   // ✅ Save theme preference
   useEffect(() => {
