@@ -11,9 +11,8 @@ import { motion, AnimatePresence } from "framer-motion";
  * - Swiping (touch + mouse) switches between cached cities only (no API on swipe)
  */
 
-const API_BASE =
-  process.env.REACT_APP_API_BASE ||
-  "https://weather-backend-latest-1-hxzy.onrender.com";
+const API_BASE = "http://localhost:5000";
+
 
 function App() {
   const [city, setCity] = useState("");
