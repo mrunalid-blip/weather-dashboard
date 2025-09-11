@@ -2,27 +2,36 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Custom styles */
-body {
-  margin: 0;
-  font-family: Arial, sans-serif;
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
 }
 
-/* Mobile responsive tweaks */
-@media (max-width: 768px) {
-  .search-bar {
-    flex-direction: column;
-    gap: 0.5rem;
-  }
+/* Hide scrollbar on mobile */
+::-webkit-scrollbar {
+  display: none;
+}
+body {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;     /* Firefox */
+}
 
-  .search-bar input,
-  .search-bar button {
-    width: 100%;
-  }
+/* Prevent zoom-in on iOS inputs */
+input, select, textarea {
+  font-size: 16px;
+}
 
-  .weather-card {
-    width: 100% !important;
-    margin: 0.5rem auto;
-    border-radius: 1rem;
-  }
+/* Weather card responsive style */
+.weather-card {
+  @apply w-full max-w-md mx-auto shadow-lg rounded-3xl p-6;
+}
+
+/* Forecast container */
+.forecast-container {
+  @apply grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4;
+}
+
+/* Forecast cards for mobile */
+.forecast-card {
+  @apply flex flex-col items-center bg-white/10 rounded-2xl p-4;
 }
