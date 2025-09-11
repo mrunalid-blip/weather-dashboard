@@ -275,7 +275,7 @@ function App() {
 
   return (
     <div
-      className={`min-h-screen flex flex-col items-center justify-center px-6 transition ${
+      className={`min-h-screen flex flex-col items-center justify-center px-4 py-6 transition ${
         theme === "dark"
           ? "bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white"
           : "bg-gradient-to-br from-sky-400 via-blue-500 to-indigo-600 text-white"
@@ -283,7 +283,7 @@ function App() {
     >
       <div className="w-full max-w-2xl flex flex-col items-center space-y-6">
         <div className="flex justify-between w-full items-center">
-          <h1 className="text-4xl font-bold drop-shadow-lg text-center flex-grow">
+          <h1 className="text-3xl md:text-4xl font-bold drop-shadow-lg text-center flex-grow">
             🌍 Weather Dashboard
           </h1>
           <button
@@ -343,8 +343,6 @@ function App() {
           )}
         </div>
 
-        {/* ⛔ Removed History Pills row */}
-
         {/* Swipeable Weather Card */}
         <div {...swipeHandlers} className="w-full relative min-h-[200px]">
           {error && (
@@ -380,11 +378,12 @@ function App() {
                 {forecast.length > 0 && (
                   <div className="mt-6">
                     <h3 className="text-xl font-semibold mb-2">5-Day Forecast</h3>
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                    {/* ✅ Horizontal scroll on mobile */}
+                    <div className="flex gap-4 overflow-x-auto md:grid md:grid-cols-5 md:gap-4">
                       {forecast.map((day, index) => (
                         <div
                           key={index}
-                          className="bg-white/20 backdrop-blur-md rounded-2xl p-4 text-center shadow-lg"
+                          className="min-w-[120px] bg-white/20 backdrop-blur-md rounded-2xl p-4 text-center shadow-lg"
                         >
                           <p className="font-semibold">
                             {new Date(day.dt * 1000).toLocaleDateString("en-US", {
