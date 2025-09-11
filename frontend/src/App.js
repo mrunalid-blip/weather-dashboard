@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import axios from "axios";
+import { useSwipeable } from "react-swipeable";
 
 function App() {
   const [city, setCity] = useState("");
@@ -12,12 +13,11 @@ function App() {
     JSON.parse(localStorage.getItem("searchHistory")) || []
   );
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
 
-  const API_BASE =
-    process.env.REACT_APP_API_BASE ||
-    "https://weather-backend-latest-1-hxzy.onrender.com";
+  const API_BASE = "https://weather-backend-latest-1-hxzy.onrender.com";
 
-  // ✅ Theme persistence
+  // ✅ Save theme preference
   useEffect(() => {
     const saved = localStorage.getItem("theme");
     if (saved) setTheme(saved);
@@ -65,14 +65,15 @@ function App() {
         );
         setForecast(daily);
 
+        // ✅ Add to history only if string
         if (typeof location === "string") {
           setSearchHistory((prev) => {
             const updated = [location, ...prev.filter((c) => c !== location)];
-            return updated.slice(0, 10);
+            return updated.slice(0, 10); // keep max 10
           });
+          setActiveIndex(0);
         }
       } catch (err) {
-        console.error("Weather fetch error:", err.message);
         setWeather(null);
         setForecast([]);
         setError("Could not fetch weather data.");
@@ -97,23 +98,14 @@ function App() {
               if (res.data.city) {
                 setCity(res.data.city);
                 getWeather(res.data.city);
-              } else if (res.data.latitude && res.data.longitude) {
-                getWeather({
-                  lat: res.data.latitude,
-                  lon: res.data.longitude,
-                });
               } else {
-                // ✅ fallback city if location fails
-                getWeather("London");
+                getWeather({ lat: res.data.latitude, lon: res.data.longitude });
               }
             } catch {
               console.warn("IP detection failed");
-              getWeather("London");
             }
           }
         );
-      } else {
-        getWeather("London");
       }
     };
     fetchLocation();
@@ -134,6 +126,25 @@ function App() {
     setSearchHistory([]);
     localStorage.removeItem("searchHistory");
   };
+
+  // ✅ Swipe gesture handlers
+  const swipeHandlers = useSwipeable({
+    onSwipedLeft: () => {
+      if (activeIndex < searchHistory.length - 1) {
+        const nextIndex = activeIndex + 1;
+        setActiveIndex(nextIndex);
+        getWeather(searchHistory[nextIndex]);
+      }
+    },
+    onSwipedRight: () => {
+      if (activeIndex > 0) {
+        const prevIndex = activeIndex - 1;
+        setActiveIndex(prevIndex);
+        getWeather(searchHistory[prevIndex]);
+      }
+    },
+    trackMouse: true, // allows swipe with mouse drag (desktop)
+  });
 
   return (
     <div
@@ -209,52 +220,40 @@ function App() {
           )}
         </div>
 
-        {/* Swipeable History */}
-        {searchHistory.length > 0 && (
-          <div className="w-full flex space-x-3 overflow-x-auto pb-2 no-scrollbar">
-            {searchHistory.map((h, idx) => (
-              <div
-                key={idx}
-                onClick={() => {
-                  setCity(h);
-                  handleSearch();
-                }}
-                className="px-4 py-2 bg-white/20 backdrop-blur-md rounded-full shadow-md cursor-pointer whitespace-nowrap"
-              >
-                {h}
+        {/* Swipeable Weather Card */}
+        <div {...swipeHandlers} className="w-full">
+          {/* Error */}
+          {error && (
+            <div className="bg-red-600 text-white px-4 py-2 rounded-lg mb-4 shadow">
+              {error}
+            </div>
+          )}
+
+          {/* Weather Card */}
+          {weather && (
+            <div className="bg-white/20 backdrop-blur-lg rounded-3xl p-8 w-full text-center shadow-2xl">
+              <h2 className="text-2xl font-semibold mb-2">
+                {weather.name}, {weather.sys.country}
+              </h2>
+              <div className="flex flex-col items-center my-4">
+                <img
+                  src={`http://openweathermap.org/img/wn/${weather.weather[0].icon}@4x.png`}
+                  alt={weather.weather[0].description}
+                  className="w-28 h-28"
+                />
+                <p className="text-6xl font-bold">
+                  {Math.round(weather.main.temp)}°C
+                </p>
+                <p className="capitalize text-lg mt-2">
+                  {weather.weather[0].description}
+                </p>
               </div>
-            ))}
-          </div>
-        )}
-
-        {/* Error */}
-        {error && (
-          <div className="bg-red-600 text-white px-4 py-2 rounded-lg mb-4 shadow">
-            {error}
-          </div>
-        )}
-
-        {/* Weather Card */}
-        {weather && (
-          <div className="bg-white/20 backdrop-blur-lg rounded-3xl p-8 w-full text-center shadow-2xl">
-            <h2 className="text-2xl font-semibold mb-2">
-              {weather.name}, {weather.sys.country}
-            </h2>
-            <div className="flex flex-col items-center my-4">
-              <img
-                src={`https://openweathermap.org/img/wn/${weather.weather[0].icon}@4x.png`}
-                alt={weather.weather[0].description}
-                className="w-28 h-28"
-              />
-              <p className="text-6xl font-bold">
-                {Math.round(weather.main.temp)}°C
-              </p>
-              <p className="capitalize text-lg mt-2">
-                {weather.weather[0].description}
+              <p className="text-sm opacity-75 mt-2">
+                👉 Swipe left/right to view previous searches
               </p>
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Forecast */}
         {forecast.length > 0 && (
@@ -274,7 +273,7 @@ function App() {
                     })}
                   </p>
                   <img
-                    src={`https://openweathermap.org/img/wn/${day.weather[0].icon}@2x.png`}
+                    src={`http://openweathermap.org/img/wn/${day.weather[0].icon}@2x.png`}
                     alt={day.weather[0].description}
                     className="mx-auto"
                   />
