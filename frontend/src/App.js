@@ -1,120 +1,325 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import axios from "axios";
 import { useSwipeable } from "react-swipeable";
+import { motion, AnimatePresence } from "framer-motion";
+
+/**
+ * Weather Dashboard App
+ * - Caches fetched results in localStorage (searchCache)
+ * - searchHistory (array of city keys) stored in localStorage
+ * - Swiping (touch + mouse) switches between cached cities only (no API on swipe)
+ */
+
+const API_BASE =
+  process.env.REACT_APP_API_BASE ||
+  "https://weather-backend-latest-1-hxzy.onrender.com";
 
 function App() {
   const [city, setCity] = useState("");
-  const [weather, setWeather] = useState(null);
-  const [forecast, setForecast] = useState([]);
+  const [weather, setWeather] = useState(null); // object from API for current city
+  const [forecast, setForecast] = useState([]); // daily forecast array
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
   const [theme, setTheme] = useState("light");
+
+  // history is an array of city keys (strings the user searched)
   const [searchHistory, setSearchHistory] = useState(
-    JSON.parse(localStorage.getItem("searchHistory")) || []
+    () => JSON.parse(localStorage.getItem("searchHistory")) || []
   );
-  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  // searchCache maps cityKey => { weather, forecast, cachedAt }
+  const [searchCache, setSearchCache] = useState(
+    () => JSON.parse(localStorage.getItem("searchCache")) || {}
+  );
+
+  // which index in searchHistory is currently shown (0 = most recent)
   const [activeIndex, setActiveIndex] = useState(0);
+  // used for animation direction
+  const [direction, setDirection] = useState(0);
 
-  const API_BASE = "https://weather-backend-latest-1-hxzy.onrender.com";
+  // ref to prevent initial effects from overwriting user actions
+  const didMountRef = useRef(false);
 
-  // ✅ Save theme preference
-  useEffect(() => {
-    const saved = localStorage.getItem("theme");
-    if (saved) setTheme(saved);
-  }, []);
-
-  useEffect(() => {
-    document.documentElement.classList.remove("light", "dark");
-    document.documentElement.classList.add(theme);
-    localStorage.setItem("theme", theme);
-  }, [theme]);
-
-  // ✅ Save history
+  // -------------------------
+  // Persist history & cache to localStorage
+  // -------------------------
   useEffect(() => {
     localStorage.setItem("searchHistory", JSON.stringify(searchHistory));
   }, [searchHistory]);
 
-  // ✅ Fetch weather
+  useEffect(() => {
+    localStorage.setItem("searchCache", JSON.stringify(searchCache));
+  }, [searchCache]);
+
+  // -------------------------
+  // Utility: normalize a city key for storing in cache
+  // (we use the exact string the user searched trimmed)
+  // -------------------------
+  const normalizeKey = (s) => (typeof s === "string" ? s.trim() : s);
+
+  // -------------------------
+  // Load from cache (NO API call)
+  // -------------------------
+  const loadFromCache = useCallback(
+    (cityKey) => {
+      setError(null);
+      if (!cityKey) {
+        setWeather(null);
+        setForecast([]);
+        return;
+      }
+
+      const key = normalizeKey(cityKey);
+      const cached = searchCache[key];
+      if (cached) {
+        setWeather(cached.weather || null);
+        setForecast(cached.forecast || []);
+        setError(null);
+      } else {
+        setWeather(null);
+        setForecast([]);
+        setError(`No cached data for "${key}". Please search to fetch and cache it.`);
+      }
+    },
+    [searchCache]
+  );
+
+  // -------------------------
+  // Fetch weather + forecast from backend and save to cache
+  // Accepts either a string (city name) or {lat, lon}
+  // -------------------------
   const getWeather = useCallback(
     async (location) => {
       setError(null);
       setLoading(true);
 
       try {
-        let res;
+        let currentRes;
         if (typeof location === "string") {
-          res = await axios.get(
-            `${API_BASE}/weather/${encodeURIComponent(location)}`
+          const cityKey = normalizeKey(location);
+          currentRes = await axios.get(
+            `${API_BASE}/weather/${encodeURIComponent(cityKey)}`
           );
+          // forecast
+          const forecastRes = await axios.get(
+            `${API_BASE}/forecast/${encodeURIComponent(cityKey)}`
+          );
+
+          const daily = (forecastRes.data?.list || []).filter(
+            (_, index) => index % 8 === 0
+          );
+
+          // Update cache & history
+          setSearchCache((prev) => {
+            const updated = {
+              ...prev,
+              [cityKey]: {
+                weather: currentRes.data,
+                forecast: daily,
+                cachedAt: Date.now(),
+              },
+            };
+            return updated;
+          });
+
+          setSearchHistory((prev) => {
+            const deduped = prev.filter(
+              (c) => normalizeKey(c).toLowerCase() !== cityKey.toLowerCase()
+            );
+            const updatedHist = [cityKey, ...deduped].slice(0, 10);
+            return updatedHist;
+          });
+
+          setActiveIndex(0);
+          setWeather(currentRes.data);
+          setForecast(daily);
         } else if (location.lat && location.lon) {
-          res = await axios.get(
+          // coords path
+          currentRes = await axios.get(
             `${API_BASE}/weather?lat=${location.lat}&lon=${location.lon}`
           );
-        }
+          const forecastRes = await axios.get(
+            `${API_BASE}/forecast?lat=${location.lat}&lon=${location.lon}`
+          );
+          const daily = (forecastRes.data?.list || []).filter(
+            (_, index) => index % 8 === 0
+          );
 
-        setWeather(res.data);
+          // Choose a cacheKey: use returned city name if available
+          const cityName = currentRes.data?.name
+            ? `${currentRes.data.name}`
+            : `${location.lat},${location.lon}`;
 
-        const forecastRes = await axios.get(
-          typeof location === "string"
-            ? `${API_BASE}/forecast/${encodeURIComponent(location)}`
-            : `${API_BASE}/forecast?lat=${location.lat}&lon=${location.lon}`
-        );
+          const cityKey = normalizeKey(cityName);
 
-        const daily = (forecastRes.data?.list || []).filter(
-          (_, index) => index % 8 === 0
-        );
-        setForecast(daily);
-
-        // ✅ Add to history only if string
-        if (typeof location === "string") {
-          setSearchHistory((prev) => {
-            const updated = [location, ...prev.filter((c) => c !== location)];
-            return updated.slice(0, 10); // keep max 10
+          setSearchCache((prev) => {
+            const updated = {
+              ...prev,
+              [cityKey]: {
+                weather: currentRes.data,
+                forecast: daily,
+                cachedAt: Date.now(),
+              },
+            };
+            return updated;
           });
+
+          setSearchHistory((prev) => {
+            const deduped = prev.filter(
+              (c) => normalizeKey(c).toLowerCase() !== cityKey.toLowerCase()
+            );
+            const updatedHist = [cityKey, ...deduped].slice(0, 10);
+            return updatedHist;
+          });
+
           setActiveIndex(0);
+          setWeather(currentRes.data);
+          setForecast(daily);
         }
       } catch (err) {
+        console.error("getWeather error:", err.response?.data || err.message);
+        setError("Could not fetch weather data.");
         setWeather(null);
         setForecast([]);
-        setError("Could not fetch weather data.");
       } finally {
         setLoading(false);
       }
     },
-    [API_BASE]
+    []
   );
 
-  // ✅ Auto-detect location
+  // -------------------------
+  // On mount: ensure we show the most recent cached city if present
+  // -------------------------
+  useEffect(() => {
+    const savedHistory = JSON.parse(localStorage.getItem("searchHistory")) || [];
+    const savedCache = JSON.parse(localStorage.getItem("searchCache")) || {};
+
+    // sync states (already initialized from localStorage, but ensure)
+    setSearchHistory(savedHistory);
+    setSearchCache(savedCache);
+
+    if (savedHistory.length > 0) {
+      const first = savedHistory[0];
+      if (savedCache[first]) {
+        setActiveIndex(0);
+        setWeather(savedCache[first].weather);
+        setForecast(savedCache[first].forecast || []);
+      } else {
+        // no cache for first entry: clear displayed data and show message
+        setWeather(null);
+        setForecast([]);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // run once on mount
+
+  // -------------------------
+  // When activeIndex or searchHistory changes, load from cache for that city
+  // (this covers swipe and clicking chips)
+  // -------------------------
+  useEffect(() => {
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      return;
+    }
+    if (searchHistory.length === 0) return;
+    const cityKey = searchHistory[activeIndex];
+    loadFromCache(cityKey);
+  }, [activeIndex, searchHistory, loadFromCache]);
+
+  // -------------------------
+  // Auto-detect location (original behavior) - this still fetches on first use
+  // (only runs once on mount)
+  // -------------------------
   useEffect(() => {
     const fetchLocation = async () => {
       if ("geolocation" in navigator) {
         navigator.geolocation.getCurrentPosition(
           (pos) => {
+            // fetch using coords (this will fetch and cache)
             getWeather({ lat: pos.coords.latitude, lon: pos.coords.longitude });
           },
           async () => {
+            // fallback to IP-based detection via backend /location
             try {
               const res = await axios.get(`${API_BASE}/location`);
               if (res.data.city) {
                 setCity(res.data.city);
                 getWeather(res.data.city);
-              } else {
+              } else if (res.data.latitude && res.data.longitude) {
                 getWeather({ lat: res.data.latitude, lon: res.data.longitude });
               }
-            } catch {
-              console.warn("IP detection failed");
+            } catch (e) {
+              console.warn("IP location detection failed:", e.message);
             }
           }
         );
+      } else {
+        // browser doesn't support geolocation: do nothing
       }
     };
-    fetchLocation();
-  }, [API_BASE, getWeather]);
 
+    fetchLocation();
+  }, [getWeather]);
+
+  // -------------------------
+  // Swipe handlers (touch + mouse)
+  // -------------------------
+  const swipeHandlers = useSwipeable({
+    onSwipedLeft: () => {
+      // left -> show older item (increase index)
+      if (activeIndex < searchHistory.length - 1) {
+        setDirection(1);
+        const nextIndex = activeIndex + 1;
+        setActiveIndex(nextIndex);
+        // loadFromCache triggered by effect
+      }
+    },
+    onSwipedRight: () => {
+      // right -> show newer item (decrease index)
+      if (activeIndex > 0) {
+        setDirection(-1);
+        const prevIndex = activeIndex - 1;
+        setActiveIndex(prevIndex);
+        // loadFromCache triggered by effect
+      }
+    },
+    preventDefaultTouchmoveEvent: true,
+    trackMouse: true, // enables drag with mouse on desktop
+  });
+
+  // -------------------------
+  // Animations (framer-motion)
+  // -------------------------
+  const variants = {
+    enter: (dir) => ({
+      x: dir > 0 ? 300 : -300,
+      opacity: 0,
+      scale: 0.98,
+    }),
+    center: {
+      x: 0,
+      opacity: 1,
+      scale: 1,
+      transition: { duration: 0.28, ease: "easeOut" },
+    },
+    exit: (dir) => ({
+      x: dir > 0 ? -300 : 300,
+      opacity: 0,
+      scale: 0.98,
+      transition: { duration: 0.28, ease: "easeOut" },
+    }),
+  };
+
+  // -------------------------
+  // Handlers for UI actions
+  // -------------------------
   const handleSearch = () => {
     if (city.trim()) {
+      // perform API fetch and cache
       getWeather(city.trim());
-      setShowSuggestions(false);
     }
   };
 
@@ -124,27 +329,19 @@ function App() {
 
   const clearHistory = () => {
     setSearchHistory([]);
+    setSearchCache({});
     localStorage.removeItem("searchHistory");
+    localStorage.removeItem("searchCache");
+    setActiveIndex(0);
+    setWeather(null);
+    setForecast([]);
   };
 
-  // ✅ Swipe gesture handlers
-  const swipeHandlers = useSwipeable({
-    onSwipedLeft: () => {
-      if (activeIndex < searchHistory.length - 1) {
-        const nextIndex = activeIndex + 1;
-        setActiveIndex(nextIndex);
-        getWeather(searchHistory[nextIndex]);
-      }
-    },
-    onSwipedRight: () => {
-      if (activeIndex > 0) {
-        const prevIndex = activeIndex - 1;
-        setActiveIndex(prevIndex);
-        getWeather(searchHistory[prevIndex]);
-      }
-    },
-    trackMouse: true, // allows swipe with mouse drag (desktop)
-  });
+  // click on a history pill: attempt to load from cache (do not call API)
+  const handleHistoryClick = (idx) => {
+    setActiveIndex(idx);
+    // loadFromCache effect will run
+  };
 
   return (
     <div
@@ -161,7 +358,7 @@ function App() {
             🌍 Weather Dashboard
           </h1>
           <button
-            onClick={() => setTheme(theme === "light" ? "dark" : "light")}
+            onClick={() => setTheme((t) => (t === "light" ? "dark" : "light"))}
             className="p-2 ml-4 rounded-full border bg-white/20 backdrop-blur-lg shadow-lg"
           >
             {theme === "light" ? "🌙" : "☀️"}
@@ -174,10 +371,7 @@ function App() {
             type="text"
             value={city}
             placeholder="Enter city (e.g. Hyderabad, IN)"
-            onChange={(e) => {
-              setCity(e.target.value);
-              setShowSuggestions(true);
-            }}
+            onChange={(e) => setCity(e.target.value)}
             onKeyDown={handleKeyDown}
             className="w-full px-4 py-3 rounded-xl text-gray-800 focus:outline-none shadow-lg"
           />
@@ -191,7 +385,7 @@ function App() {
           </button>
 
           {/* Dropdown suggestions */}
-          {showSuggestions && searchHistory.length > 0 && (
+          {searchHistory.length > 0 && (
             <div className="absolute top-full left-0 w-full mt-1 bg-white/30 backdrop-blur-md 
                             rounded-xl shadow-2xl overflow-hidden z-10">
               <ul>
@@ -202,7 +396,8 @@ function App() {
                       key={idx}
                       onClick={() => {
                         setCity(c);
-                        handleSearch();
+                        // When user clicks suggestion, we fetch fresh data (to update cache)
+                        getWeather(c);
                       }}
                       className="px-4 py-2 hover:bg-white/50 cursor-pointer"
                     >
@@ -220,74 +415,108 @@ function App() {
           )}
         </div>
 
-        {/* Swipeable Weather Card */}
-        <div {...swipeHandlers} className="w-full">
-          {/* Error */}
+        {/* History Pills (swipeable indicator) */}
+        {searchHistory.length > 0 && (
+          <div className="w-full flex space-x-3 overflow-x-auto pb-2 no-scrollbar">
+            {searchHistory.map((h, idx) => (
+              <div
+                key={idx}
+                onClick={() => handleHistoryClick(idx)}
+                className={`px-4 py-2 rounded-full shadow-md cursor-pointer whitespace-nowrap select-none ${
+                  idx === activeIndex
+                    ? "bg-yellow-400 text-black font-semibold"
+                    : "bg-white/20 backdrop-blur-md text-white"
+                }`}
+              >
+                {h}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Swipeable Weather Card area */}
+        <div {...swipeHandlers} className="w-full relative min-h-[200px]">
+          {/* Error message */}
           {error && (
             <div className="bg-red-600 text-white px-4 py-2 rounded-lg mb-4 shadow">
               {error}
             </div>
           )}
 
-          {/* Weather Card */}
-          {weather && (
-            <div className="bg-white/20 backdrop-blur-lg rounded-3xl p-8 w-full text-center shadow-2xl">
-              <h2 className="text-2xl font-semibold mb-2">
-                {weather.name}, {weather.sys.country}
-              </h2>
-              <div className="flex flex-col items-center my-4">
-                <img
-                  src={`http://openweathermap.org/img/wn/${weather.weather[0].icon}@4x.png`}
-                  alt={weather.weather[0].description}
-                  className="w-28 h-28"
-                />
-                <p className="text-6xl font-bold">
-                  {Math.round(weather.main.temp)}°C
+          <AnimatePresence custom={direction} initial={false}>
+            {weather ? (
+              <motion.div
+                key={weather.id || (weather.name + (weather.sys?.country || ""))}
+                custom={direction}
+                variants={variants}
+                initial="enter"
+                animate="center"
+                exit="exit"
+                className="absolute w-full bg-white/20 backdrop-blur-lg rounded-3xl p-8 text-center shadow-2xl"
+              >
+                <h2 className="text-2xl font-semibold mb-2">
+                  {weather.name}, {weather.sys.country}
+                </h2>
+                <div className="flex flex-col items-center my-4">
+                  <img
+                    src={`https://openweathermap.org/img/wn/${weather.weather[0].icon}@4x.png`}
+                    alt={weather.weather[0].description}
+                    className="w-28 h-28"
+                  />
+                  <p className="text-6xl font-bold">{Math.round(weather.main.temp)}°C</p>
+                  <p className="capitalize text-lg mt-2">{weather.weather[0].description}</p>
+                </div>
+
+                {/* Forecast */}
+                {forecast.length > 0 && (
+                  <div className="mt-6">
+                    <h3 className="text-xl font-semibold mb-2">5-Day Forecast</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                      {forecast.map((day, index) => (
+                        <div
+                          key={index}
+                          className="bg-white/20 backdrop-blur-md rounded-2xl p-4 text-center shadow-lg"
+                        >
+                          <p className="font-semibold">
+                            {new Date(day.dt * 1000).toLocaleDateString("en-US", {
+                              weekday: "short",
+                            })}
+                          </p>
+                          <img
+                            src={`https://openweathermap.org/img/wn/${day.weather[0].icon}@2x.png`}
+                            alt={day.weather[0].description}
+                            className="mx-auto"
+                          />
+                          <p className="text-xl font-bold">{Math.round(day.main.temp)}°C</p>
+                          <p className="text-sm capitalize">{day.weather[0].description}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <p className="text-sm opacity-75 mt-4">
+                  👉 Swipe left/right (or drag with mouse) to browse cached searches
                 </p>
-                <p className="capitalize text-lg mt-2">
-                  {weather.weather[0].description}
-                </p>
-              </div>
-              <p className="text-sm opacity-75 mt-2">
-                👉 Swipe left/right to view previous searches
-              </p>
-            </div>
-          )}
+              </motion.div>
+            ) : (
+              // Placeholder when no weather to show
+              <motion.div
+                key="placeholder"
+                custom={direction}
+                variants={variants}
+                initial="enter"
+                animate="center"
+                exit="exit"
+                className="absolute w-full bg-white/10 backdrop-blur-lg rounded-3xl p-8 text-center shadow-2xl"
+              >
+                <p className="text-lg">No weather selected. Search a city to fetch & cache it.</p>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
-        {/* Forecast */}
-        {forecast.length > 0 && (
-          <div className="mt-6 w-full">
-            <h3 className="text-2xl font-semibold mb-4 text-center">
-              5-Day Forecast
-            </h3>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              {forecast.map((day, index) => (
-                <div
-                  key={index}
-                  className="bg-white/20 backdrop-blur-md rounded-2xl p-4 text-center shadow-lg"
-                >
-                  <p className="font-semibold">
-                    {new Date(day.dt * 1000).toLocaleDateString("en-US", {
-                      weekday: "short",
-                    })}
-                  </p>
-                  <img
-                    src={`http://openweathermap.org/img/wn/${day.weather[0].icon}@2x.png`}
-                    alt={day.weather[0].description}
-                    className="mx-auto"
-                  />
-                  <p className="text-xl font-bold">
-                    {Math.round(day.main.temp)}°C
-                  </p>
-                  <p className="text-sm capitalize">
-                    {day.weather[0].description}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* Bottom area spacing */}
       </div>
     </div>
   );
