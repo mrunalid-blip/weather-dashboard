@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import axios from "axios";
 import { useSwipeable } from "react-swipeable";
@@ -16,34 +17,26 @@ const API_BASE =
 
 function App() {
   const [city, setCity] = useState("");
-  const [weather, setWeather] = useState(null); // object from API for current city
-  const [forecast, setForecast] = useState([]); // daily forecast array
+  const [weather, setWeather] = useState(null);
+  const [forecast, setForecast] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState(null); // now used
 
   const [theme, setTheme] = useState("light");
 
-  // history is an array of city keys (strings the user searched)
   const [searchHistory, setSearchHistory] = useState(
     () => JSON.parse(localStorage.getItem("searchHistory")) || []
   );
 
-  // searchCache maps cityKey => { weather, forecast, cachedAt }
   const [searchCache, setSearchCache] = useState(
     () => JSON.parse(localStorage.getItem("searchCache")) || {}
   );
 
-  // which index in searchHistory is currently shown (0 = most recent)
   const [activeIndex, setActiveIndex] = useState(0);
-  // used for animation direction
   const [direction, setDirection] = useState(0);
 
-  // ref to prevent initial effects from overwriting user actions
   const didMountRef = useRef(false);
 
-  // -------------------------
-  // Persist history & cache to localStorage
-  // -------------------------
   useEffect(() => {
     localStorage.setItem("searchHistory", JSON.stringify(searchHistory));
   }, [searchHistory]);
@@ -52,15 +45,8 @@ function App() {
     localStorage.setItem("searchCache", JSON.stringify(searchCache));
   }, [searchCache]);
 
-  // -------------------------
-  // Utility: normalize a city key for storing in cache
-  // (we use the exact string the user searched trimmed)
-  // -------------------------
   const normalizeKey = (s) => (typeof s === "string" ? s.trim() : s);
 
-  // -------------------------
-  // Load from cache (NO API call)
-  // -------------------------
   const loadFromCache = useCallback(
     (cityKey) => {
       setError(null);
@@ -69,7 +55,6 @@ function App() {
         setForecast([]);
         return;
       }
-
       const key = normalizeKey(cityKey);
       const cached = searchCache[key];
       if (cached) {
@@ -85,10 +70,6 @@ function App() {
     [searchCache]
   );
 
-  // -------------------------
-  // Fetch weather + forecast from backend and save to cache
-  // Accepts either a string (city name) or {lat, lon}
-  // -------------------------
   const getWeather = useCallback(
     async (location) => {
       setError(null);
@@ -101,7 +82,6 @@ function App() {
           currentRes = await axios.get(
             `${API_BASE}/weather/${encodeURIComponent(cityKey)}`
           );
-          // forecast
           const forecastRes = await axios.get(
             `${API_BASE}/forecast/${encodeURIComponent(cityKey)}`
           );
@@ -110,7 +90,6 @@ function App() {
             (_, index) => index % 8 === 0
           );
 
-          // Update cache & history
           setSearchCache((prev) => {
             const updated = {
               ...prev,
@@ -135,7 +114,6 @@ function App() {
           setWeather(currentRes.data);
           setForecast(daily);
         } else if (location.lat && location.lon) {
-          // coords path
           currentRes = await axios.get(
             `${API_BASE}/weather?lat=${location.lat}&lon=${location.lon}`
           );
@@ -146,7 +124,6 @@ function App() {
             (_, index) => index % 8 === 0
           );
 
-          // Choose a cacheKey: use returned city name if available
           const cityName = currentRes.data?.name
             ? `${currentRes.data.name}`
             : `${location.lat},${location.lon}`;
@@ -189,14 +166,9 @@ function App() {
     []
   );
 
-  // -------------------------
-  // On mount: ensure we show the most recent cached city if present
-  // -------------------------
   useEffect(() => {
     const savedHistory = JSON.parse(localStorage.getItem("searchHistory")) || [];
     const savedCache = JSON.parse(localStorage.getItem("searchCache")) || {};
-
-    // sync states (already initialized from localStorage, but ensure)
     setSearchHistory(savedHistory);
     setSearchCache(savedCache);
 
@@ -207,18 +179,12 @@ function App() {
         setWeather(savedCache[first].weather);
         setForecast(savedCache[first].forecast || []);
       } else {
-        // no cache for first entry: clear displayed data and show message
         setWeather(null);
         setForecast([]);
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // run once on mount
+  }, []);
 
-  // -------------------------
-  // When activeIndex or searchHistory changes, load from cache for that city
-  // (this covers swipe and clicking chips)
-  // -------------------------
   useEffect(() => {
     if (!didMountRef.current) {
       didMountRef.current = true;
@@ -229,20 +195,14 @@ function App() {
     loadFromCache(cityKey);
   }, [activeIndex, searchHistory, loadFromCache]);
 
-  // -------------------------
-  // Auto-detect location (original behavior) - this still fetches on first use
-  // (only runs once on mount)
-  // -------------------------
   useEffect(() => {
     const fetchLocation = async () => {
       if ("geolocation" in navigator) {
         navigator.geolocation.getCurrentPosition(
           (pos) => {
-            // fetch using coords (this will fetch and cache)
             getWeather({ lat: pos.coords.latitude, lon: pos.coords.longitude });
           },
           async () => {
-            // fallback to IP-based detection via backend /location
             try {
               const res = await axios.get(`${API_BASE}/location`);
               if (res.data.city) {
@@ -256,43 +216,28 @@ function App() {
             }
           }
         );
-      } else {
-        // browser doesn't support geolocation: do nothing
       }
     };
-
     fetchLocation();
   }, [getWeather]);
 
-  // -------------------------
-  // Swipe handlers (touch + mouse)
-  // -------------------------
   const swipeHandlers = useSwipeable({
     onSwipedLeft: () => {
-      // left -> show older item (increase index)
       if (activeIndex < searchHistory.length - 1) {
         setDirection(1);
-        const nextIndex = activeIndex + 1;
-        setActiveIndex(nextIndex);
-        // loadFromCache triggered by effect
+        setActiveIndex(activeIndex + 1);
       }
     },
     onSwipedRight: () => {
-      // right -> show newer item (decrease index)
       if (activeIndex > 0) {
         setDirection(-1);
-        const prevIndex = activeIndex - 1;
-        setActiveIndex(prevIndex);
-        // loadFromCache triggered by effect
+        setActiveIndex(activeIndex - 1);
       }
     },
     preventDefaultTouchmoveEvent: true,
-    trackMouse: true, // enables drag with mouse on desktop
+    trackMouse: true,
   });
 
-  // -------------------------
-  // Animations (framer-motion)
-  // -------------------------
   const variants = {
     enter: (dir) => ({
       x: dir > 0 ? 300 : -300,
@@ -313,12 +258,8 @@ function App() {
     }),
   };
 
-  // -------------------------
-  // Handlers for UI actions
-  // -------------------------
   const handleSearch = () => {
     if (city.trim()) {
-      // perform API fetch and cache
       getWeather(city.trim());
     }
   };
@@ -337,10 +278,8 @@ function App() {
     setForecast([]);
   };
 
-  // click on a history pill: attempt to load from cache (do not call API)
   const handleHistoryClick = (idx) => {
     setActiveIndex(idx);
-    // loadFromCache effect will run
   };
 
   return (
@@ -352,7 +291,6 @@ function App() {
       }`}
     >
       <div className="w-full max-w-2xl flex flex-col items-center space-y-6">
-        {/* Title + Theme */}
         <div className="flex justify-between w-full items-center">
           <h1 className="text-4xl font-bold drop-shadow-lg text-center flex-grow">
             🌍 Weather Dashboard
@@ -385,7 +323,7 @@ function App() {
           </button>
 
           {/* Dropdown suggestions */}
-          {searchHistory.length > 0 && (
+          {city && searchHistory.length > 0 && (
             <div className="absolute top-full left-0 w-full mt-1 bg-white/30 backdrop-blur-md 
                             rounded-xl shadow-2xl overflow-hidden z-10">
               <ul>
@@ -396,7 +334,6 @@ function App() {
                       key={idx}
                       onClick={() => {
                         setCity(c);
-                        // When user clicks suggestion, we fetch fresh data (to update cache)
                         getWeather(c);
                       }}
                       className="px-4 py-2 hover:bg-white/50 cursor-pointer"
@@ -415,7 +352,7 @@ function App() {
           )}
         </div>
 
-        {/* History Pills (swipeable indicator) */}
+        {/* History Pills */}
         {searchHistory.length > 0 && (
           <div className="w-full flex space-x-3 overflow-x-auto pb-2 no-scrollbar">
             {searchHistory.map((h, idx) => (
@@ -434,9 +371,9 @@ function App() {
           </div>
         )}
 
-        {/* Swipeable Weather Card area */}
+        {/* Swipeable Weather Card */}
         <div {...swipeHandlers} className="w-full relative min-h-[200px]">
-          {/* Error message */}
+          {/* ✅ Error message block added here */}
           {error && (
             <div className="bg-red-600 text-white px-4 py-2 rounded-lg mb-4 shadow">
               {error}
@@ -467,7 +404,6 @@ function App() {
                   <p className="capitalize text-lg mt-2">{weather.weather[0].description}</p>
                 </div>
 
-                {/* Forecast */}
                 {forecast.length > 0 && (
                   <div className="mt-6">
                     <h3 className="text-xl font-semibold mb-2">5-Day Forecast</h3>
@@ -500,7 +436,6 @@ function App() {
                 </p>
               </motion.div>
             ) : (
-              // Placeholder when no weather to show
               <motion.div
                 key="placeholder"
                 custom={direction}
@@ -515,8 +450,6 @@ function App() {
             )}
           </AnimatePresence>
         </div>
-
-        {/* Bottom area spacing */}
       </div>
     </div>
   );
