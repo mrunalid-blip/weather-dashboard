@@ -160,6 +160,16 @@ function App() {
     []
   );
 
+
+    // 🔥 Ensure background covers full page and switches with theme
+  useEffect(() => {
+    if (theme === "dark") {
+      document.body.classList.add("dark");
+    } else {
+      document.body.classList.remove("dark");
+    }
+  }, [theme]);
+
   useEffect(() => {
     const savedHistory = JSON.parse(localStorage.getItem("searchHistory")) || [];
     const savedCache = JSON.parse(localStorage.getItem("searchCache")) || {};

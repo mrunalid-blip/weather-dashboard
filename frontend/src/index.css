@@ -4,12 +4,14 @@
 
 html, body, #root {
   height: 100%;
+  margin: 0;
+  padding: 0;
 }
 
 body {
-  @apply bg-gradient-to-b from-blue-400 to-indigo-600;
-  min-height: 100vh;
-  background-attachment: fixed; /* keeps gradient pinned while scrolling */
-  background-repeat: no-repeat;
-  background-size: cover;
+  @apply bg-gradient-to-br from-sky-400 via-blue-500 to-indigo-600 text-white;
+}
+
+body.dark {
+  @apply bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white;
 }
