@@ -1,30 +1,20 @@
-
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import axios from "axios";
 import { useSwipeable } from "react-swipeable";
 import { motion, AnimatePresence } from "framer-motion";
 
-/**
- * Weather Dashboard App
- * - Caches fetched results in localStorage (searchCache)
- * - searchHistory (array of city keys) stored in localStorage
- * - Swiping (touch + mouse) switches between cached cities only (no API on swipe)
- */
-
-// top of App.js
 const API_BASE =
   process.env.REACT_APP_API_BASE ||
   (window.location.hostname === "localhost"
     ? "http://localhost:5000"
     : "https://weather-backend-latest-1-hxzy.onrender.com");
 
-
 function App() {
   const [city, setCity] = useState("");
   const [weather, setWeather] = useState(null);
   const [forecast, setForecast] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null); // now used
+  const [error, setError] = useState(null);
 
   const [theme, setTheme] = useState("light");
 
@@ -265,6 +255,7 @@ function App() {
   const handleSearch = () => {
     if (city.trim()) {
       getWeather(city.trim());
+      setCity(""); // ✅ clear input, hides dropdown
     }
   };
 
@@ -280,10 +271,6 @@ function App() {
     setActiveIndex(0);
     setWeather(null);
     setForecast([]);
-  };
-
-  const handleHistoryClick = (idx) => {
-    setActiveIndex(idx);
   };
 
   return (
@@ -337,8 +324,8 @@ function App() {
                     <li
                       key={idx}
                       onClick={() => {
-                        setCity(c);
                         getWeather(c);
+                        setCity(""); // ✅ clear input after clicking
                       }}
                       className="px-4 py-2 hover:bg-white/50 cursor-pointer"
                     >
@@ -356,28 +343,10 @@ function App() {
           )}
         </div>
 
-        {/* History Pills */}
-        {searchHistory.length > 0 && (
-          <div className="w-full flex space-x-3 overflow-x-auto pb-2 no-scrollbar">
-            {searchHistory.map((h, idx) => (
-              <div
-                key={idx}
-                onClick={() => handleHistoryClick(idx)}
-                className={`px-4 py-2 rounded-full shadow-md cursor-pointer whitespace-nowrap select-none ${
-                  idx === activeIndex
-                    ? "bg-yellow-400 text-black font-semibold"
-                    : "bg-white/20 backdrop-blur-md text-white"
-                }`}
-              >
-                {h}
-              </div>
-            ))}
-          </div>
-        )}
+        {/* ⛔ Removed History Pills row */}
 
         {/* Swipeable Weather Card */}
         <div {...swipeHandlers} className="w-full relative min-h-[200px]">
-          {/* ✅ Error message block added here */}
           {error && (
             <div className="bg-red-600 text-white px-4 py-2 rounded-lg mb-4 shadow">
               {error}
@@ -434,10 +403,6 @@ function App() {
                     </div>
                   </div>
                 )}
-
-                <p className="text-sm opacity-75 mt-4">
-                  👉 Swipe left/right (or drag with mouse) to browse cached searches
-                </p>
               </motion.div>
             ) : (
               <motion.div

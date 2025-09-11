@@ -1,3 +1,28 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Custom styles */
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+}
+
+/* Mobile responsive tweaks */
+@media (max-width: 768px) {
+  .search-bar {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .search-bar input,
+  .search-bar button {
+    width: 100%;
+  }
+
+  .weather-card {
+    width: 100% !important;
+    margin: 0.5rem auto;
+    border-radius: 1rem;
+  }
+}
